@@ -2,50 +2,61 @@
 -compile(export_all).
 
 exec(View, SubsetSize, ExpectedNodes, Id) -> % Should subset size be adapted, were part of nodes to die ?
-	%io:format("Hi, I'm node ~p with view ~p\n", [Id, View]),
-	case length(View)/=2*SubsetSize of
-		true ->
-			io:format("node ~p view : ~p\n", [Id,View]);
+	%%io:format("node ~p view : ~p\n", [Id,View]),
+	% case length(View)==SubsetSize*2 of 
+	% 	true ->
+	% 		X=1;
+	% 	false ->
+	% 		io:format("~p : ~p\n", [Id, View])
+	% 	end,
+	case Id=='1' of 
 		false ->
-			X=1
+			Y=1;
+		true ->
+			io:format("~p : ~p\n", [Id, View])
 		end,
 	receive
-		{request, _, NodeId} ->   
-			% respond to views sent
-            %io:format("Hi, I'm node ~p receiving request from ~p\n", [Id, NodeId]),
+		{request, ReqNodes, ReqNode} ->   			
 			case length(View)==0 of
 				true ->
-					NodeId ! {response, [], Id};
+					ReqNode ! {response, [], Id};
 				false ->
-					NodeId ! {response, node:sample([], View, SubsetSize, lists:nth(rand:uniform(length(View)), View), {-1,0}), Id}
+					First = lists:nth(rand:uniform(length(View)), View),
+					Subset = node:sample([], View, SubsetSize, First, {-1,0}),
+					RespNodes = [Node || {Node, _} <- Subset],
+					%%io:format("~p, request from ~p with subset ~p, respond with ~p\n", [Id, ReqNode, ReqNodes, RespNodes]),
+					ReqNode ! {response, RespNodes, Id}
 				end,			
 			exec(View, SubsetSize, ExpectedNodes, Id);
-		{response, Subset, NodeId} ->
-			%exec(View, SubsetSize, ExpectedNodes, Id);
-			% case Id=='1' of
-			% 	true ->
-			% 		io:format("Hi, I'm node ~p receiving response from ~p that is ~p\n", [Id, NodeId, Subset]);
-			% 	false ->
-			% 		Y=1
-			% 	end,
-			handle_response(View, SubsetSize, ExpectedNodes, Id, [Node || {Node, _} <- lists:filter(fun ({Node,_}) -> Node/=Id end, Subset )], NodeId, node:get_request_subset(NodeId, ExpectedNodes));
+		{response, RespNodes, RespNode} ->
+			%Resp = [Node || {Node, _} <- lists:filter(fun ({Node,_}) -> Node/=Id end, Subset )], % take Id entry out  
+			%%io:format("~p WTF ? ~p\n", [Id, lists:filter(fun (Node) -> Node/=Id end, RespNodes )]),
+			RespWithoutId = lists:filter(fun (Node) -> Node/=Id end, RespNodes ),
+			%%io:format("~p : RespWithoutId ~p \n", [Id, RespWithoutId]),
+			ReqNodes = node:get_request_subset(RespNode, ExpectedNodes),
+			%%io:format("~p tmp1, ~p, ~p, ~p, ~p\n", [Id, View, ReqNodes, RespWithoutId, SubsetSize*2]),
+			%%io:format("~p : ReqNodes ~p , View : ~p\n", [Id, ReqNodes, node:get_new_view(View, ReqNodes, RespWithoutId, SubsetSize*2)]),
+			%%io:format("~p tmp2\n", [Id]),			
+			NewView = node:get_new_view(View, ReqNodes, RespWithoutId, SubsetSize*2),
+			%%io:format("~p : NewView ~p \n", [Id, NewView]),
+			NewExpected = lists:filter(fun ({Node,_}) -> Node/=RespNode end, ExpectedNodes),
+			%%io:format("~p, Response from ~p with RespNodes : ~p, ReqNodes : ~p, NewView : ~p\n", [Id, RespNode, RespNodes, ReqNodes, NewView]),
+			node:exec(NewView, SubsetSize, NewExpected, Id);
+			%handle_response(View, SubsetSize, ExpectedNodes, Id, RespWithoutId, NodeId, ReqNodes);
 		period ->
-			%io:format("Hi, I'm node ~p having my period\n", [Id]), % CurList, View, R, Candidate, Oldest
-			{Oldest, Age} = oldest(-1, -1, inc(View)),
-			Subset = node:sample([], inc(View), SubsetSize, {Oldest, Age}, {Oldest, Age}),
-			case Id=='1' of
-				true ->
-					io:format("Coucou : ~p, ~p, ~p\n", [inc(View), SubsetSize, Oldest]);
-				% Oldest is without the age !!!!!!
-				false ->
-					F=1
-				end,
-			handle_period(inc(View),SubsetSize,ExpectedNodes,Id,Subset, Oldest);						
+			NewView = inc(View),
+			{Oldest, Age} = oldest(-1, -1, NewView),
+			Subset = node:sample([], NewView, SubsetSize, {Oldest, Age}, {Oldest, Age}),
+			ReqNodes = [Node || {Node, _} <- Subset],
+			%%io:format("~p handle period\n", [Id]),
+			handle_period(NewView,SubsetSize,ExpectedNodes,Id,ReqNodes, Oldest);						
 		{timeout, ToCheck} ->
-			%io:format("Hi, I'm node ~p checking timeout for ~p\n", [Id, ToCheck]),
+			%%io:format("~p handle timeout for node ~p\n", [Id, ToCheck]),
 			case  lists:member(ToCheck, [Node || {Node, _} <- ExpectedNodes]) of 
 				true -> % node did not respond in time, remove it of the view	lists:filter(fun ({Node,_}) -> Node/=ToDel end, View).				
-					exec(del_in_view(View, ToCheck), SubsetSize, lists:filter(fun({Node,_}) -> Node/=ToCheck end, ExpectedNodes) , Id);
+					NewView = del_in_view(View, ToCheck),
+					NewExpected =  lists:filter(fun({Node,_}) -> Node/=ToCheck end, ExpectedNodes),
+					exec(NewView, SubsetSize, NewExpected, Id);
 				false ->%[[],[{'25',0},{'12',0},{'40',0},{'7',0},{'39',0}],2,{'39',0}]
 					exec(View, SubsetSize, ExpectedNodes, Id)
 			end
@@ -70,27 +81,23 @@ oldest(CurOldest, OldestAge, [{Candidate, Age}|T]) ->
 oldest(CurOldest, Age, []) ->
 	{CurOldest, Age}.
 
-% to test : node:sample([], [{'7',4},{'71',4}, {'25',4}], 2, {'71',4}).
-sample(CurList, _, 0, _, _) -> 
+sample(CurList, _, 0, _, _) -> % to test : node:sample([], [{'7',4},{'71',4}, {'25',4}], 2, {'71',4}). 
 	CurList;
 sample(CurList, View, R, Candidate, Oldest) ->
-	%%io:format("View : ~p ; CurList ~p\n", [View, CurList]),
-	%%io:format("Lengths : ~p ; CurList ~p\n", [length(View), length(CurList)]),
-	%%io:format("Lengths : ~p\n", [length(View)==length(CurList)]),
 	case length(CurList)==length(View) of 
 		true -> % in case view too small 
 			CurList;
 		false ->
+			Next = lists:nth(rand:uniform(length(View)), View),
 			case lists:member(Candidate, CurList) orelse Candidate==Oldest of 
 				true ->
-					node:sample(CurList, View, R, lists:nth(rand:uniform(length(View)), View), Oldest);
+					node:sample(CurList, View, R, Next, Oldest);
 				false ->
-					node:sample([Candidate|CurList], View, R-1, lists:nth(rand:uniform(length(View)), View), Oldest)
+					node:sample([Candidate|CurList], View, R-1, Next, Oldest)
 				end
 		end.
 
-% to test : node:reset_subset([{'7',4},{'71',4}, {'25',4}, {'78',4},{'22',4},{'42',4},{'73',4},{'58',4},{'15',5},{'3',4}], {'15',5}, []).
-reset_Q([{Node,Age}|T], Oldest, NewView) -> 
+reset_Q([{Node,Age}|T], Oldest, NewView) -> % to test : node:reset_subset([{'7',4},{'71',4}, {'25',4}, {'78',4},{'22',4},{'42',4},{'73',4},{'58',4},{'15',5},{'3',4}], {'15',5}, []). 
  	case Node==Oldest of
  		true ->
 			(NewView ++ [{Node,0}]) ++ T;
@@ -103,53 +110,51 @@ reset_Q([], _, NewView) ->
 del_in_view(View, ToDel) ->
 	 lists:filter(fun ({Node,_}) -> Node/=ToDel end, View).
 
-handle_period(View, SubsetSize, ExpectedNodes, Id, Subset, Oldest) ->
-	% case Id=='1' of
-	% 	true ->
-	% 		io:format("Hi, I'm node ~p sendiong request to ~p that is ~p\n", [Id, Oldest, Subset]);
-	% 	false ->
-	% 		Z=1
-	% 	end,
+handle_period(View, SubsetSize, ExpectedNodes, Id, ReqNodes, Oldest) ->
 	case length(View)==0 of
 		true -> 
-			node:exec(View, SubsetSize, ExpectedNodes, Id);
-		false ->
-			%io:format("~p\n", [Oldest]),
-			Oldest ! {request, Subset, Id}, % TODO : don't send counts ideally
 			timer:send_after(3000, period),
 			timer:send_after(1000, {timeout, Oldest}),
-			node:exec(node:reset_Q(View, Oldest, []), SubsetSize, [{Oldest,Subset}] ++ ExpectedNodes, Id)
+			node:exec(View, SubsetSize, ExpectedNodes, Id);
+		false ->
+			Oldest ! {request, ReqNodes, Id}, % TODO : don't send counts ideally
+			timer:send_after(3000, period),
+			timer:send_after(1000, {timeout, Oldest}),
+			node:exec(node:reset_Q(View, Oldest, []), SubsetSize, [{Oldest,ReqNodes}] ++ ExpectedNodes, Id)
 		end.
 
-%Oldest : '3' reset_Q : [{'12',17},{'3',17},{'14',16},{'7',16},{'10',16}]
-% then: [{'12',17},{'3',17},{'14',16},{'7',16},{'10',16}]
-%lists:uniq(fun({X, _}) -> X end, lists:merge(Subset,View))
-handle_response(View, SubsetSize, ExpectedNodes, Id, RespSubset, ToAck, RequestSubset) ->
-	% get_new_view(View, RespSubset, lists:filter(fun ({Node,_}) -> not lists:member(Node, RespSubset) end, RequestSubset))
-	ToDel = node:get_to_del(RequestSubset, RespSubset, SubsetSize, length(View), View),
-	ToAdd = node:get_to_add([X || {X,_} <- View], RespSubset),
-	% case Id=='1' of
-	% 	true ->
-	% 		io:format("ToDel : ~p, ToAdd : ~p, Resp Subset~p, View ~p\n", [ToDel,ToAdd, RespSubset, View]);
-	% 	false ->
-	% 		W=1
-	% 	end,
-	node:exec(node:get_new_view(View, ToAdd, ToDel), SubsetSize, lists:filter(fun ({Node,_}) -> Node/=ToAck end, ExpectedNodes), Id).
+% handle_response(View, SubsetSize, ExpectedNodes, Id, RespNodes, RespNode, ReqNodes) ->
+% 	NewView = node:get_new_view(View, , ToDel)
+% 	node:exec(NewView, SubsetSize, lists:filter(fun ({Node,_}) -> Node/=RespNode end, ExpectedNodes), Id).
 
-get_to_del(Req, Resp, SubsetSize, ViewSize, View) -> %nb to del : max(0,length(ToAdd)-(SubsetSize-length(View)))
-	lists:sublist([ToR || {ToR, _} <-  lists:filter(fun ({Node,_}) -> not lists:member(Node, Resp) end, Req)], lists:max([0,length(get_to_add([X || {X,_} <- View], Resp))-(SubsetSize*2-ViewSize)])).
+% get_to_del(Req, Resp, SubsetSize, ViewSize, View) -> %nb to del : max(0,length(ToAdd)-(SubsetSize-length(View)))
+% 	lists:sublist([ToR || {ToR, _} <-  lists:filter(fun ({Node,_}) -> not lists:member(Node, Resp) end, Req)], lists:max([0,length(get_to_add([X || {X,_} <- View], Resp))-(SubsetSize*2-ViewSize)])).
 
-get_to_add(ViewNode, Resp) -> %[Node || {Node, _} <- ExpectedNodes]
-	lists:filter(fun (Node) -> not lists:member(Node, ViewNode) end, Resp).
-%lists:uniq(fun({X, _}) -> X end, RespSubset++View)
-get_new_view(View, ToAdd, ToDelete) ->
-	% todo : check whether cache is full
-	lists:uniq(fun({X, _}) -> X end, lists:filter(fun ({Node,_}) -> not lists:member(Node, ToDelete) end,View) ++ lists:map(fun (Node) -> {Node, 0} end, ToAdd)).
+% get_to_add(ViewNode, Resp) -> %[Node || {Node, _} <- ExpectedNodes]
+% 	lists:filter(fun (Node) -> not lists:member(Node, ViewNode) end, Resp).
 
-% node:get_new_view(View, RespSubset, get_to_del(RequestSubset, RespSubset)), SubsetSize, lists:filter(fun ({Node,_}) -> Node/=ToAck end, ExpectedNodes), Id ).
-% [{'1',3},{'2',4},{'3',5}, {'4',6}]
-% [{'1',3},{'2',4}]
-% ['2','3']
+% [{'17',0},{'3',1}], ['3'], ['3'], 2
+get_new_view(View, ReqNodes, RespWithoutId, SizeBound) ->
+	%lists:uniq(fun({X, _}) -> X end, lists:filter(fun ({Node,_}) -> not lists:member(Node, ToDelete) end,View) ++ lists:map(fun (Node) -> {Node, 0} end, ToAdd)).
+	ViewNodes = [Node || {Node, _} <-View],
+	RespFiltered = lists:filter(fun (Node) -> not lists:member(Node, ViewNodes) end, RespWithoutId),
+	ToAdd = lists:map(fun (Node) -> {Node, 0} end, RespFiltered),
+	NewView = View ++ ToAdd,
+	Deletable = lists:filter(fun (Node) -> not lists:member(Node, RespWithoutId) end, ReqNodes),
+	prune(NewView, Deletable, SizeBound).
+
+%node:prune([{'5',1},{'28',1},{'33',1}, {'3',1},{'37',1},{'99',1},{'40',0},{'67',0},{'11',0},{'62',0},{'81',0},{'17',0}],['37','28'],10).
+prune(NewView, Deletable, SizeBound) ->
+	case length(NewView)>SizeBound of 
+		true ->
+			ToPrune = lists:nth(1, Deletable),
+			%%%io:format("~p\n", [ToPrune]),
+			PrunedView = lists:filter(fun ({Node, _}) -> Node/=ToPrune end,NewView),
+			prune(PrunedView, lists:filter(fun (Node) -> Node/=ToPrune end, Deletable), SizeBound); 
+		false -> 
+			NewView
+		end.
+
 get_request_subset(ToAck, ExpectedNodes) -> 
 	case lists:dropwhile(fun({Node,_}) -> Node/=ToAck end, ExpectedNodes) of 
 		[] -> 
@@ -158,7 +163,6 @@ get_request_subset(ToAck, ExpectedNodes) ->
 			ToR
 		end.
 
-% https://stackoverflow.com/questions/10318156/how-to-create-a-list-of-1000-random-numbers-in-erlang
 init_view(N, Id) -> 
 	make_view(N div 10, [], N,  list_to_atom(integer_to_list(Id)),  list_to_atom(integer_to_list(rand:uniform(N)))).
 
@@ -183,10 +187,9 @@ start_nodes(Cur, Cluster, N) ->
 	NodePid = spawn(?MODULE, exec, [View, N div 20, [], Node]),
 	register(Node, NodePid),
 	period(NodePid),
-	io:format("Hi, I'm node ~p with view ~p\n", [Node, View]),
+	%%io:format("Hi, I'm node ~p with view ~p\n", [Node, View]),
     start_nodes(Cur - 1, [Node | Cluster], N).
 
 main() ->
-	start_nodes(120, [], 120),
-    %timer:send_interval(300, list_to_atom(integer_to_list(rand:uniform(5))), view),
+	start_nodes(100, [], 100),
 	ok.
