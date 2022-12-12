@@ -13,34 +13,53 @@ exec(View, SubsetSize, ExpectedNodes, Id, Turn) -> % Should subset size be adapt
 	% 	false ->
 	% 		Y=1;
 	% 	true ->
-	% 		io:format("~p : ~p\n", [Id, View])
+	% 		io:format("Exec of ~p, View : ~p\n", [Id, View])
 	% 	end,
 	receive
-		{request, ReqNodes, ReqNode} ->   			
+		{request, ReqNodes, ReqNode} ->  			
 			case length(View)==0 of
 				true ->
-					ReqNode ! {response, [], Id};
-				false ->
-					First = lists:nth(rand:uniform(length(View)), View),
-					Subset = node:sample([], View, SubsetSize, First, {-1,0}),
-					RespNodes = [Node || {Node, _} <- Subset],
+					RespNodes = [],
+					ReqNode ! {response, RespNodes, Id};
+				false -> % [{'17',0},{'3',1}], ['3'], ['3'], 2 | [{'17',0},{'3',1}], ['3','42'], ['5'], 2
+					{First,_} = lists:nth(rand:uniform(length(View)), View),
+					RespNodes = node:sample([], View, SubsetSize-1, First, ReqNode),
 					%%io:format("~p, request from ~p with subset ~p, respond with ~p\n", [Id, ReqNode, ReqNodes, RespNodes]),
 					ReqNode ! {response, RespNodes, Id}
-				end,			
-			exec(View, SubsetSize, ExpectedNodes, Id, Turn);
+				end, %ReqNodes, RespWithoutId
+			NewView = get_new_view(View, RespNodes, ReqNodes, SubsetSize*2),
+			% case Id=='1' of 
+			% 	false ->
+			% 		Z=1;
+			% 	true ->
+			% 		io:format("receive request from ~p : ~p ; View becomes ~p\n", [ReqNode, ReqNodes, NewView])
+			% 	end, 
+			logging(Id, NewView, Turn),			
+			exec(NewView, SubsetSize, ExpectedNodes, Id, Turn);
 		{response, RespNodes, RespNode} ->
 			RespWithoutId = lists:filter(fun (Node) -> Node/=Id end, RespNodes ),
 			ReqNodes = node:get_request_subset(RespNode, ExpectedNodes),	
 			NewView = node:get_new_view(View, ReqNodes, RespWithoutId, SubsetSize*2),
 			NewExpected = lists:filter(fun ({Node,_}) -> Node/=RespNode end, ExpectedNodes),
-			logging(Id, View, Turn),
+			logging(Id, NewView, Turn),
+			% case Id=='1' of 
+			% 	false ->
+			% 		Z=1;
+			% 	true ->
+			% 		io:format("receive response from ~p : ~p ; View becomes ~p\n", [RespNode, RespNodes, NewView])
+			% 	end, 
 			exec(NewView, SubsetSize, NewExpected, Id, Turn);
 		period ->
 			NewView = inc(View),
 			{Oldest, Age} = oldest(-1, -1, NewView),
-			Subset = node:sample([], NewView, SubsetSize, {Oldest, Age}, {Oldest, Age}),
-			ReqNodes = [Node || {Node, _} <- Subset],
-			logging(Id, View, Turn),
+			ReqNodes = node:sample([], NewView, SubsetSize-1, Oldest, Oldest),
+			% logging(Id, NewView, Turn),
+			% case Id=='1' of 
+			% 	false ->
+			% 		W=1;
+			% 	true ->
+			% 		io:format("send request to ~p : ~p \n", [Oldest, ReqNodes])
+			% 	end, 
 			handle_period(NewView,SubsetSize,ExpectedNodes,Id,ReqNodes, Oldest, Turn+1);						
 		{timeout, ToCheck} ->
 			case  lists:member(ToCheck, [Node || {Node, _} <- ExpectedNodes]) of 
@@ -80,7 +99,7 @@ sample(CurList, View, R, Candidate, Oldest) ->
 		true -> % in case view too small 
 			CurList;
 		false ->
-			Next = lists:nth(rand:uniform(length(View)), View),
+			{Next, _} = lists:nth(rand:uniform(length(View)), View),
 			case lists:member(Candidate, CurList) orelse Candidate==Oldest of 
 				true ->
 					sample(CurList, View, R, Next, Oldest);
@@ -106,13 +125,13 @@ handle_period(View, SubsetSize, ExpectedNodes, Id, ReqNodes, Oldest, Turn) ->
 	case length(View)==0 of
 		true -> 
 			timer:send_after(10000, period),
-			timer:send_after(3000, {timeout, Oldest}),
+			timer:send_after(7000, {timeout, Oldest}),
 			exec(View, SubsetSize, ExpectedNodes, Id, Turn);
 		false ->
 			%io:format("~p sends to oldest ~p : ~p \n", [Id, Oldest, ReqNodes]),
 			Oldest ! {request, ReqNodes, Id}, % TODO : don't send counts ideally
 			timer:send_after(10000, period),
-			timer:send_after(3000, {timeout, Oldest}),
+			timer:send_after(7000, {timeout, Oldest}),
 			exec(reset_Q(View, Oldest, []), SubsetSize, [{Oldest,ReqNodes}] ++ ExpectedNodes, Id, Turn)
 		end.
 
