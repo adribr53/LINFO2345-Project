@@ -1,7 +1,7 @@
 -module(node).
 -compile(export_all).
 
-exec(View, SubsetSize, ExpectedNodes, Id, Turn) -> % Should subset size be adapted, were part of nodes to die ?
+exec(View, SubsetSize, ViewSize, ExpectedNodes, Id, Turn) -> % Should subset size be adapted, were part of nodes to die ?
 	%%io:format("node ~p view : ~p\n", [Id,View]),
 	% case length(View)==SubsetSize*2 of 
 	% 	true ->
@@ -9,12 +9,12 @@ exec(View, SubsetSize, ExpectedNodes, Id, Turn) -> % Should subset size be adapt
 	% 	false ->
 	% 		io:format("~p : ~p\n", [Id, View])
 	% 	end,
-	% case Id=='1' of 
-	% 	false ->
-	% 		Y=1;
-	% 	true ->
-	% 		io:format("Exec of ~p, View : ~p\n", [Id, View])
-	% 	end,
+	case Id=='1' of 
+		false ->
+			Y=1;
+		true ->
+			io:format("Exec of ~p, View : ~p\n", [Id, View])
+		end,
 	receive
 		{request, ReqNodes, ReqNode} ->  			
 			case length(View)==0 of
@@ -27,49 +27,61 @@ exec(View, SubsetSize, ExpectedNodes, Id, Turn) -> % Should subset size be adapt
 					%%io:format("~p, request from ~p with subset ~p, respond with ~p\n", [Id, ReqNode, ReqNodes, RespNodes]),
 					ReqNode ! {response, RespNodes, Id}
 				end, %ReqNodes, RespWithoutId
-			NewView = get_new_view(View, RespNodes, ReqNodes, SubsetSize*2),
-			% case Id=='1' of 
-			% 	false ->
-			% 		Z=1;
-			% 	true ->
-			% 		io:format("receive request from ~p : ~p ; View becomes ~p\n", [ReqNode, ReqNodes, NewView])
-			% 	end, 
+			NewView = get_new_view(View, RespNodes, ReqNodes, ViewSize),
+			case Id=='1' of 
+				false ->
+					Z=1;
+				true ->
+					io:format("receive request from ~p : ~p ; respond with ~p ; View becomes ~p\n", [ReqNode, ReqNodes, RespNodes, NewView])
+				end, 
 			logging(Id, NewView, Turn),			
-			exec(NewView, SubsetSize, ExpectedNodes, Id, Turn);
+			exec(NewView, SubsetSize, ViewSize, ExpectedNodes, Id, Turn);
 		{response, RespNodes, RespNode} ->
 			RespWithoutId = lists:filter(fun (Node) -> Node/=Id end, RespNodes ),
 			ReqNodes = node:get_request_subset(RespNode, ExpectedNodes),	
-			NewView = node:get_new_view(View, ReqNodes, RespWithoutId, SubsetSize*2),
+			NewView = node:get_new_view(View, ReqNodes, RespWithoutId, ViewSize),
 			NewExpected = lists:filter(fun ({Node,_}) -> Node/=RespNode end, ExpectedNodes),
 			logging(Id, NewView, Turn),
-			% case Id=='1' of 
-			% 	false ->
-			% 		Z=1;
-			% 	true ->
-			% 		io:format("receive response from ~p : ~p ; View becomes ~p\n", [RespNode, RespNodes, NewView])
-			% 	end, 
-			exec(NewView, SubsetSize, NewExpected, Id, Turn);
+			case Id=='1' of 
+				false ->
+					Z=1;
+				true ->
+					io:format("receive response from ~p : ~p ; View becomes ~p\n", [RespNode, RespNodes, NewView])
+				end, 
+			exec(NewView, SubsetSize, ViewSize, NewExpected, Id, Turn);
 		period ->
 			NewView = inc(View),
-			{Oldest, Age} = oldest(-1, -1, NewView),
+			{Oldest, _} = oldest(-1, -1, NewView),
 			ReqNodes = node:sample([], NewView, SubsetSize-1, Oldest, Oldest),
-			% logging(Id, NewView, Turn),
-			% case Id=='1' of 
-			% 	false ->
-			% 		W=1;
-			% 	true ->
-			% 		io:format("send request to ~p : ~p \n", [Oldest, ReqNodes])
-			% 	end, 
-			handle_period(NewView,SubsetSize,ExpectedNodes,Id,ReqNodes, Oldest, Turn+1);						
+			logging(Id, NewView, Turn),
+			case Id=='1' of 
+				false ->
+					W=1;
+				true ->
+					io:format("send request to ~p : ~p \n", [Oldest, ReqNodes])
+				end, 
+			%handle_period(NewView,SubsetSize,ViewSize, ExpectedNodes,Id,ReqNodes, Oldest, Turn+1);	
+			case length(NewView)==0 of
+				true -> 
+					timer:send_after(10000, period),
+					timer:send_after(7000, {timeout, Oldest}),
+					exec(NewView, SubsetSize, ViewSize ,ExpectedNodes, Id, Turn);
+				false ->
+					%io:format("~p sends to oldest ~p : ~p \n", [Id, Oldest, ReqNodes]),
+					Oldest ! {request, ReqNodes, Id}, % TODO : don't send counts ideally
+					timer:send_after(10000, period),
+					timer:send_after(7000, {timeout, Oldest}),
+					exec(reset_Q(NewView, Oldest, []), SubsetSize, ViewSize, [{Oldest,ReqNodes}] ++ ExpectedNodes, Id, Turn+1)
+				end;				
 		{timeout, ToCheck} ->
 			case  lists:member(ToCheck, [Node || {Node, _} <- ExpectedNodes]) of 
 				true -> % node did not respond in time, remove it of the view	lists:filter(fun ({Node,_}) -> Node/=ToDel end, View).				
 					io:format("HEREEEEEEEEE\n"),
 					NewView = del_in_view(View, ToCheck),
 					NewExpected =  lists:filter(fun({Node,_}) -> Node/=ToCheck end, ExpectedNodes),
-					exec(NewView, SubsetSize, NewExpected, Id, Turn);
+					exec(NewView, SubsetSize,ViewSize, NewExpected, Id, Turn);
 				false ->%[[],[{'25',0},{'12',0},{'40',0},{'7',0},{'39',0}],2,{'39',0}]
-					exec(View, SubsetSize, ExpectedNodes, Id, Turn)
+					exec(View, SubsetSize, ViewSize, ExpectedNodes, Id, Turn)
 			end
 	end.
 
@@ -121,19 +133,19 @@ reset_Q([], _, NewView) ->
 del_in_view(View, ToDel) ->
 	 lists:filter(fun ({Node,_}) -> Node/=ToDel end, View).
 
-handle_period(View, SubsetSize, ExpectedNodes, Id, ReqNodes, Oldest, Turn) ->
-	case length(View)==0 of
-		true -> 
-			timer:send_after(10000, period),
-			timer:send_after(7000, {timeout, Oldest}),
-			exec(View, SubsetSize, ExpectedNodes, Id, Turn);
-		false ->
-			%io:format("~p sends to oldest ~p : ~p \n", [Id, Oldest, ReqNodes]),
-			Oldest ! {request, ReqNodes, Id}, % TODO : don't send counts ideally
-			timer:send_after(10000, period),
-			timer:send_after(7000, {timeout, Oldest}),
-			exec(reset_Q(View, Oldest, []), SubsetSize, [{Oldest,ReqNodes}] ++ ExpectedNodes, Id, Turn)
-		end.
+% handle_period(View, SubsetSize, ViewSizeExpectedNodes, Id, ReqNodes, Oldest, Turn) ->
+% 	case length(View)==0 of
+% 		true -> 
+% 			timer:send_after(10000, period),
+% 			timer:send_after(7000, {timeout, Oldest}),
+% 			exec(View, SubsetSize, ExpectedNodes, Id, Turn);
+% 		false ->
+% 			%io:format("~p sends to oldest ~p : ~p \n", [Id, Oldest, ReqNodes]),
+% 			Oldest ! {request, ReqNodes, Id}, % TODO : don't send counts ideally
+% 			timer:send_after(10000, period),
+% 			timer:send_after(7000, {timeout, Oldest}),
+% 			exec(reset_Q(View, Oldest, []), SubsetSize, [{Oldest,ReqNodes}] ++ ExpectedNodes, Id, Turn)
+% 		end.
 
 % [{'17',0},{'3',1}], ['3'], ['3'], 2 | [{'17',0},{'3',1}], ['3','42'], ['5'], 2
 get_new_view(View, ReqNodes, RespWithoutId, SizeBound) ->
@@ -206,30 +218,27 @@ make_view(R, CurList, N, Id, Candidate) ->
 		end
 	end.
 
-start_nodes(0, Cluster, _) -> Cluster;
-start_nodes(Cur, Cluster, N) ->
+start_nodes(0, Cluster, _, _, _) -> Cluster;
+start_nodes(Cur, Cluster, N, ViewSize, SubsetSize) ->
 	io:format("~p\n", [N]),
     Node = list_to_atom(integer_to_list(Cur)),
 	View = init_view(N, Cur),
-	NodePid = spawn(?MODULE, exec, [View, N div 20, [], Node, 0]),
+	NodePid = spawn(?MODULE, exec, [View, SubsetSize, ViewSize, [], Node, 0]),
 	register(Node, NodePid),
 	period(NodePid),
-    start_nodes(Cur - 1, [Node | Cluster], N).
+    start_nodes(Cur - 1, [Node | Cluster], N, ViewSize, SubsetSize).
 
-% create_files(0) ->
-% 	io:format("Files were created\n");
-% create_files(Id) ->
-% 	FilePath = string:concat(integer_to_list(Id),"log.csv"), 
-% 	Columns = "Id, Turn, Node, Age",
-% 	file:write_file(FilePath, Columns),
-% 	create_files(Id-1).
 create_file() ->
 	FilePath = "log.csv", 
 	Columns = "Id,Turn,Node,Age\n",
 	file:write_file(FilePath, Columns).
 
 main() ->
-	N_NODE = 1000,
-	start_nodes(N_NODE, [], N_NODE),
+	N_NODE = 100,
+	VIEW_FRAC = 0.1,
+	SUBSET_FRAC = 0.05,
+	ViewSize = round(N_NODE*VIEW_FRAC),
+	SubsetSize = round(N_NODE*SUBSET_FRAC),
+	start_nodes(N_NODE, [], N_NODE, ViewSize, SubsetSize),
 	create_file(),
 	ok.
