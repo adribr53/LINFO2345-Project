@@ -1,15 +1,22 @@
 -module(log).
 -compile(export_all).
 
-create_file() ->
-	FilePath = "log.csv", 
-	Columns = "Id,Turn,Node,Age\n",
-	file:write_file(FilePath, Columns).
+logging(File) ->
+	receive
+		{register, Id, View, Turn} ->
+			lists:foreach(
+				fun({Node, Age}) -> 
+					file:write_file(File, lists:concat([Id, ",", Turn, ",", Node, ",", Age,"\n"]), [append])
+				end,
+			View),
+			logging(File);
+		close -> ok
+	end.
 
-logging(Id, View, Turn) -> 
-	FilePath = "log.csv",
-	lists:foreach(
-		fun({Node, Age}) -> 
-			file:write_file(FilePath, lists:concat([Id, ",", Turn, ",", Node, ",", Age,"\n"]), [append])
-		end,
-	View).
+create_file(File) ->
+	Columns = "Id,Turn,Node,Age\n",
+	file:write_file(File, Columns).
+
+init(File) ->
+	create_file(File),
+	spawn(?MODULE, logging, [File]).
