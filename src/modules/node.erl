@@ -1,10 +1,10 @@
 -module(node).
--compile(export_all).
+-export([init/5, exec/8, inc/1, oldest/3, sample/5, get_request_subset/2, handle_stop/1]).
 
 init(Cur, N, ViewSize, SubsetSize, Logger) ->
     Node = list_to_atom(integer_to_list(Cur)),
 	View = view:init(N, Cur, ViewSize),
-	io:format("View => ~p\n", [View]),
+	%io:format("View => ~p\n", [View]),
 	NodePid = spawn(?MODULE, exec, [View, SubsetSize, ViewSize, [], Node, 0, false, Logger]),
 	register(Node, NodePid),
 	period(NodePid, Cur, N),
@@ -55,7 +55,7 @@ exec(View, SubsetSize, ViewSize, ExpectedNodes, Id, Turn, Stop, Logger) -> % Sho
 		{timeout, ToCheck} ->
 			case  lists:member(ToCheck, [Node || {Node, _} <- ExpectedNodes]) of 
 				true 	-> % node did not respond in time, remove it of the view	lists:filter(fun ({Node,_}) -> Node/=ToDel end, View).				
-					io:format("Node ~p timeout node ~p\n", [Id, ToCheck]),
+					%io:format("Node ~p timeout node ~p\n", [Id, ToCheck]),
 					Logger ! {register, Id, [{ToCheck,-2}], Turn},
 					NewView = view:del_node(View, ToCheck),
 					NewExpected =  lists:filter(fun({Node,_}) -> Node/=ToCheck end, ExpectedNodes),

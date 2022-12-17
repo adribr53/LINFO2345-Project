@@ -1,5 +1,5 @@
 # [LINFO2345] Project : Random Peer Sampling in ERLANG
-# Developer Section
+# PART 2 : The Byzantine Nodes Problem
 
 
 ## About the project
@@ -10,29 +10,34 @@ Make sure you have **escript** correcty installed in your computer (normally ins
 
 ## How to compile
 
-To compile the project, use the command:
+To compile the project use the command:
 
 ```
 make build
 ```
 
+OR
+
+```
+erlc log.erl node.erl view.erl byzantine.erl
+```
+
 
 ## How to run
 
-To run the program (First Part), you can use the command:
+To run the program, you can use these commands:
 
 ```
-make run1
+make run
 ```
 
-To run the program (Second Part), you can use the command:
+OR
 
 ```
-make run2
+escript runner.erl N_NODE BYZ_FRAC VIEW_FRAC SUBSET_FRAC LOG_FILE WAIT_TIME
 ```
 
-
-## VARIABLES IN THE MAKEFILE
+WHERE:
 
 - `N_NODE` is the total number of node in the network,
 - `BYZ_FRAC` is the percentage of byzantine nodes in the total number of node in the network [0;1],

@@ -1,5 +1,9 @@
 -module(log).
--compile(export_all).
+-export([init/1, logging/1]).
+
+init(File) ->
+	create_file(File),
+	spawn(?MODULE, logging, [File]).
 
 logging(File) ->
 	receive
@@ -16,7 +20,3 @@ logging(File) ->
 create_file(File) ->
 	Columns = "Id,Turn,Node,Age\n",
 	file:write_file(File, Columns).
-
-init(File) ->
-	create_file(File),
-	spawn(?MODULE, logging, [File]).

@@ -1,5 +1,5 @@
 -module(view).
--compile(export_all).
+-export([init/3, init_from_list/2, get_new/4, reset_age/3, del_node/2]).
 
 init(N, Id, ViewSize) -> create(ViewSize, [], N,  list_to_atom(integer_to_list(Id)),  list_to_atom(integer_to_list(rand:uniform(N)))).
 
