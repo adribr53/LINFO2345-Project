@@ -32,7 +32,13 @@ make run2
 ```
 
 
-## VARIABLES IN THE MAKEFILE
+### Run without Makefile (Or modify variables directly)
+
+```
+escript src/parts/2_byzantine_nodes_problem/runner.erl N_NODE BYZ_FRAC VIEW_FRAC SUBSET_FRAC LOG_FILE WAIT_TIME
+```
+
+WHERE
 
 - `N_NODE` is the total number of node in the network,
 - `BYZ_FRAC` is the percentage of byzantine nodes in the total number of node in the network [0;1],
