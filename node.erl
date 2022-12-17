@@ -4,6 +4,7 @@
 init(Cur, N, ViewSize, SubsetSize) ->
     Node = list_to_atom(integer_to_list(Cur)),
 	View = view:init(N, Cur, ViewSize),
+	io:format("View => ~p\n", [View]),
 	NodePid = spawn(?MODULE, exec, [View, SubsetSize, ViewSize, [], Node, 0, false]),
 	register(Node, NodePid),
 	period(NodePid, Cur, N),
@@ -20,7 +21,7 @@ exec(View, SubsetSize, ViewSize, ExpectedNodes, Id, Turn, Stop) -> % Should subs
 					ReqNode ! {response, RespNodes, Id};
 				false -> % [{'17',0},{'3',1}], ['3'], ['3'], 2 | [{'17',0},{'3',1}], ['3','42'], ['5'], 2
 					{First,_} = lists:nth(rand:uniform(length(View)), View),
-					RespNodes = node:sample([], View, SubsetSize-1, First, ReqNode),
+					RespNodes = sample([], View, SubsetSize-1, First, ReqNode),
 					%%io:format("~p, request from ~p with subset ~p, respond with ~p\n", [Id, ReqNode, ReqNodes, RespNodes]),
 					ReqNode ! {response, RespNodes, Id}
 			end, %ReqNodes, RespWithoutId
@@ -49,7 +50,7 @@ exec(View, SubsetSize, ViewSize, ExpectedNodes, Id, Turn, Stop) -> % Should subs
 		period ->
 			NewView = inc(View),
 			{Oldest, _} = oldest(-1, -1, NewView),
-			ReqNodes = node:sample([], NewView, SubsetSize-1, Oldest, Oldest),
+			ReqNodes = sample([], NewView, SubsetSize-1, Oldest, Oldest),
 			log:logging(Id, NewView, Turn),
 			% case Id=='1' of 
 			% 	false ->
