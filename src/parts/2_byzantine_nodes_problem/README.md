@@ -45,3 +45,9 @@ WHERE:
 - `SUBSET_FRAC` is the percentage of nodes in each view which will be shared at the neighboring nodes. [0:1]
 - `LOG_FILE` is the name of the logging file.
 - `WAIT_TIME` is the time during which the program will run before closing.
+- 
+## How to clean (delete .dump & .beam)
+
+```
+make clean
+```

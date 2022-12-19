@@ -15,9 +15,9 @@ gen_nodes(Cur, Cluster, N, ViewSize, SubsetSize, ByzantineNodesList, Logger) 	->
 		    gen_nodes(Cur - 1, [Node | Cluster], N, ViewSize, SubsetSize, ByzantineNodesList, Logger)
 	end.
 
-kill_after(N, Time) ->	
-	PidToKill = list_to_atom(integer_to_list(N)),
-	timer:send_after(Time, PidToKill, stop).
+% kill_after(N, Time) ->	
+% 	PidToKill = list_to_atom(integer_to_list(N)),
+% 	timer:send_after(Time, PidToKill, stop).
 
 gen_rnd_nbr(0, _, ListId) 		-> ListId;
 gen_rnd_nbr(N, Max, ListId) 	->
@@ -36,14 +36,15 @@ start(IN_N_NODE, IN_BYZ_FRAC, IN_VIEW_FRAC, IN_SUBSET_FRAC, LOG_FILE) ->
 	BYZ_FRAC = list_to_float(IN_BYZ_FRAC),
 	VIEW_FRAC = list_to_float(IN_VIEW_FRAC), % 0.2
 	SUBSET_FRAC = list_to_float(IN_SUBSET_FRAC), % 0.1
-	N_BYZ_NODE = round(N_NODE*(BYZ_FRAC)+1),
+	N_BYZ_NODE = round(N_NODE*(BYZ_FRAC)),
 	ViewSize = round(N_NODE*VIEW_FRAC),
 	SubsetSize = round(N_NODE*SUBSET_FRAC),
 	
-	BYZ_NODE_ID = gen_rnd_nbr(N_BYZ_NODE, N_NODE, []),
 	Logger = log:init(LOG_FILE),
+	BYZ_NODE_ID = gen_rnd_nbr(N_BYZ_NODE, N_NODE, []),
+	io:format("[~p] Byzantine Nodes List : ~p\n", [N_BYZ_NODE, BYZ_NODE_ID]),
 	gen_nodes(N_NODE, [], N_NODE, ViewSize, SubsetSize, BYZ_NODE_ID, Logger),
-	kill_after(rand:uniform(N_NODE), 50*8000),
+	% kill_after(rand:uniform(N_NODE), 50*8000),
 	end_init.
 
 main([IN_N_NODE, IN_BYZ_FRAC, IN_VIEW_FRAC, IN_SUBSET_FRAC, LOG_FILE, WAIT_TIME]) ->

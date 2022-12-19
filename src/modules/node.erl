@@ -31,6 +31,16 @@ exec(View, SubsetSize, ViewSize, ExpectedNodes, Id, Turn, Stop, Logger) -> % Sho
 			ReqNodes = node:get_request_subset(RespNode, ExpectedNodes),	
 			NewView = view:get_new(View, ReqNodes, RespWithoutId, ViewSize),
 			NewExpected = lists:filter(fun ({Node,_}) -> Node/=RespNode end, ExpectedNodes),
+			% case Id=='1' of
+			% 	true ->
+			% 		io:format("Response from ~p\n", [RespNode]),
+			% 		io:format("Old View of ~p => ~p\n", [Id, View]),
+			% 		io:format("New View of ~p => ~p\n", [Id, NewView]),
+			% 		io:format("ReqNodes of ~p => ~p\n", [Id, ReqNodes]),
+			% 		io:format("RespNodes of ~p => ~p\n", [RespNode, RespNodes]);
+			% 	false ->
+			% 		pass
+			% end,
 			exec(NewView, SubsetSize, ViewSize, NewExpected, Id, Turn, Stop, Logger);
 
 		period ->
@@ -55,7 +65,7 @@ exec(View, SubsetSize, ViewSize, ExpectedNodes, Id, Turn, Stop, Logger) -> % Sho
 		{timeout, ToCheck} ->
 			case  lists:member(ToCheck, [Node || {Node, _} <- ExpectedNodes]) of 
 				true 	-> % node did not respond in time, remove it of the view	lists:filter(fun ({Node,_}) -> Node/=ToDel end, View).				
-					%io:format("Node ~p timeout node ~p\n", [Id, ToCheck]),
+					io:format("Node ~p timeout node ~p\n", [Id, ToCheck]),
 					Logger ! {register, Id, [{ToCheck,-2}], Turn},
 					NewView = view:del_node(View, ToCheck),
 					NewExpected =  lists:filter(fun({Node,_}) -> Node/=ToCheck end, ExpectedNodes),

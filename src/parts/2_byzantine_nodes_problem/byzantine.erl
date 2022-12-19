@@ -14,7 +14,14 @@ exec(View, SubsetSize, ViewSize, ExpectedNodes, Id, Turn, Stop, Logger) ->
 					RespNodes = node:sample([], View, SubsetSize-1, First, ReqNode),
 					%io:format("Byzantine node ~p sends evil subset to ~p:\n~p\n", [Id, ReqNode, RespNodes]),
 					ReqNode ! {response, RespNodes, Id}
-			end,			
+			end,
+			% case ReqNode=='1' of
+			% 	true ->
+			% 		io:format("Request to ~p\n", [ReqNode]),
+			% 		io:format("RespNodes of Byzantine ~p => ~p\n", [Id, RespNodes]);
+			% 	false ->
+			% 		pass
+			% end,		
 			exec(View, SubsetSize, ViewSize, ExpectedNodes, Id, Turn, Stop, Logger);
 		stop -> 
 			Logger ! {register, Id, [{Id,-1}], Turn},
